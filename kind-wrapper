@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+set -e -o pipefail; [[ -n "$DEBUG" ]] && set -x
+
+if ! [[ "$1" == "create" && "$2" == cluster ]]; then
+  command "kind" "$@"
+  exit $?
+fi
+
+shift 2
+
+args=("create" "cluster")
+while [[ "$1" != "" ]]; do
+  case "$1" in
+  --control-plane )
+    controlplane_num="$2"
+    ;;
+  --control-plane=* )
+    controlplane_num="${1##*=}"
+    ;;
+  --worker )
+    worker_num="$2"
+    ;;
+  --worker=* )
+    worker_num="${1##*=}"
+    ;;
+  *)
+    args+=("$1")
+  esac
+
+  shift
+done
+
+# If options are not specified
+if [[ -z "$controlplane_num" && -z "$worker_num" ]]; then
+  command kind "${args[@]}"
+  exit $?
+fi
+
+
+# Validate --control-plane option
+if [[ -n "$controlplane_num" ]] && ! [[ "$controlplane_num" =~ ^[0-9]+$ ]]; then
+  echo "Error: invalid argument '$controlplane_num' for --control-plane" >&2
+  exit 1
+fi
+
+# Validate --worker option
+if [[ -n "$worker_num" ]] && ! [[ "$worker_num" =~ ^[0-9]+$ ]]; then
+  echo "Error: invalid argument '$worker_num' for --worker" >&2
+  exit 1
+fi
+
+[[ -z "$controlplane_num" ]] && controlplane_num=1
+[[ -z "$worker_num" ]] && worker_num=1
+
+# Generate config file
+config_file="$(mktemp)"
+cat <<EOL >"$config_file"
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+nodes:
+EOL
+for (( i=0; i < "$controlplane_num"; i++ )); do
+  echo "- role: control-plane" >>"$config_file"
+done
+for (( i=0; i < "$worker_num"; i++ )); do
+  echo "- role: worker" >>"$config_file"
+done
+
+command "kind" "${args[@]}" --config="$config_file"
+exit $?
+# vim: ai ts=2 sw=2 et sts=2 ft=sh
