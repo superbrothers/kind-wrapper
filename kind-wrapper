@@ -14,12 +14,14 @@ while [[ "$1" != "" ]]; do
   case "$1" in
   --control-plane )
     controlplane_num="$2"
+    shift
     ;;
   --control-plane=* )
     controlplane_num="${1##*=}"
     ;;
   --worker )
     worker_num="$2"
+    shift
     ;;
   --worker=* )
     worker_num="${1##*=}"
