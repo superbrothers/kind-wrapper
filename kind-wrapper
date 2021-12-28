@@ -17,14 +17,21 @@ while [[ "$1" != "" ]]; do
     shift
     ;;
   --control-plane=* )
-    controlplane_num="${1##*=}"
+    controlplane_num="${1#*=}"
     ;;
   --worker )
     worker_num="$2"
     shift
     ;;
   --worker=* )
-    worker_num="${1##*=}"
+    worker_num="${1#*=}"
+    ;;
+  --feature-gates )
+    feature_gates="$2"
+    shift
+    ;;
+  --feature-gates=* )
+    feature_gates="${1#*=}"
     ;;
   *)
     args+=("$1")
@@ -34,7 +41,7 @@ while [[ "$1" != "" ]]; do
 done
 
 # If options are not specified
-if [[ -z "$controlplane_num" && -z "$worker_num" ]]; then
+if [[ -z "$controlplane_num" && -z "$worker_num"  && -z "$feature_gates" ]]; then
   command kind "${args[@]}"
   exit $?
 fi
@@ -52,22 +59,41 @@ if [[ -n "$worker_num" ]] && ! [[ "$worker_num" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-[[ -z "$controlplane_num" ]] && controlplane_num=1
-[[ -z "$worker_num" ]] && worker_num=1
+if [[ -n "$worker_num" && -z "$controlplane_num" ]]; then
+  controlplane_num=1
+fi
 
 # Generate config file
 config_file="$(mktemp)"
-cat <<EOL >"$config_file"
+cat <<EOL >>"$config_file"
 apiVersion: kind.x-k8s.io/v1alpha4
 kind: Cluster
-nodes:
 EOL
-for (( i=0; i < "$controlplane_num"; i++ )); do
-  echo "- role: control-plane" >>"$config_file"
-done
-for (( i=0; i < "$worker_num"; i++ )); do
-  echo "- role: worker" >>"$config_file"
-done
+
+if [[ -n "$controlplane_num" ]]; then
+  echo "nodes:" >>"$config_file"
+  for (( i=0; i < "$controlplane_num"; i++ )); do
+    echo "- role: control-plane" >>"$config_file"
+  done
+  for (( i=0; i < "$worker_num"; i++ )); do
+    echo "- role: worker" >>"$config_file"
+  done
+fi
+
+# feature-gates
+if [[ -n "$feature_gates" ]]; then
+  echo "featureGates:" >>"$config_file"
+  for feature_gate in ${feature_gates//,/ }; do
+    echo "  ${feature_gate//=/: }" >>"$config_file"
+  done
+fi
+
+cat >&2 <<EOL
+Creating a new cluster with the following config...
+---
+$(cat "$config_file")
+---
+EOL
 
 command "kind" "${args[@]}" --config="$config_file"
 exit $?
